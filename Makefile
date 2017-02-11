@@ -14,11 +14,6 @@ SHAREDIR=$(PREFIX)/share/$(PROGNAME)
 EXTRACFLAGS=-DHTMLPATH=\"$(SHAREDIR)\"
 endif
 
-define \n
-
-
-endef
-
 CPPFLAGS+=-DMODES_DUMP1090_VERSION=\"$(DUMP1090_VERSION)\"
 CFLAGS+=-O2 -g -Wall -Werror -W
 LIBS+=-lpthread -lm
@@ -59,7 +54,7 @@ ifdef AIRSPY
 CPPFLAGS+= $(CPPFLAGS_AIRSPY)
 CFLAGS_RTL+= $(CFLAGS_AIRSPY)
 LIBS_RTL+= $(LIBS_AIRSPY)
-$(info ${\n}Building with Airspy support...${\n})
+$(info ::: Building with Airspy support :::)
 endif
 
 DUMP1090_OBJ=dump1090.o anet.o interactive.o mode_ac.o mode_s.o net_io.o crc.o demod_2400.o stats.o cpr.o icao_filter.o track.o util.o convert.o

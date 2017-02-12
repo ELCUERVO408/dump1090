@@ -38,3 +38,7 @@ For details on usage after building, do this:
 ````
 $ dump1090 --help
 ````
+
+>**Note about Airspy support:**
+ The support for Airspy devices, as currently implemented, is certainly not optimal! Performance is hindered greatly by the need to resample so that the data is suitable for the demodulator code as written (which expects 8-bit samples at 2.4 MS/s). Ideally, equivalent demod code written to directly support the Airspy's 12-bit samples at 6 or 10 MS/s would be utilized.
+

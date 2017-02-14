@@ -1223,7 +1223,7 @@ int parse_u64(char* s, uint64_t* const value) {
 //=========================================================================
 //
 int main(int argc, char **argv) {
-    int j;
+    int j, result;
 
     // Set sane defaults
     modesInitConfig();

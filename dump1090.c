@@ -939,12 +939,12 @@ void showHelp(void) {
 #endif
 #ifdef HAVE_AIRSPY
 "AIRSPY specific options:\n"
-"    --serial-number <n>      Serial number of Airspy to open\n"
+"    --serial-number <n>      Serial number of Airspy to open (optional)\n"
 "    --linearity-gain <n>     Set linearity simplified gain, 0-21\n"
 "    --sensitivity-gain <n>   Set sensitivity simplified gain, 0-21\n"
-"    --mixer-gain <n>         Set MIXER (RF) gain (0-15, default 8)\n"
-"    --vga-gain <n>           Set VGA (baseband) gain (0-15, default 5)\n"
-"    --lna-gain <n>           Set LNA (IF) gain (0-15, default 1)\n"
+"    --mixer-gain <n>         Set MIXER gain (0-15, default 8)\n"
+"    --vga-gain <n>           Set VGA gain (0-15, default 5)\n"
+"    --lna-gain <n>           Set LNA gain (0-15, default 1)\n"
 "    --enable-lna-agc         Enable LNA AGC\n"
 "    --enable-mixer-agc       Enable MIXER AGC\n"
 "    --enable-airspy-biast    Set bias tee supply on (default off)\n"

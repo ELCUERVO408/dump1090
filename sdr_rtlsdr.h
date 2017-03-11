@@ -21,10 +21,13 @@
 #ifndef SDR_RTLSDR_H
 #define SDR_RTLSDR_H
 
+#include "demod_2400.h"
+
 void rtlsdrInitConfig();
 void rtlsdrShowHelp();
 bool rtlsdrOpen();
 void rtlsdrRun();
+void rtlsdrDemod(struct mag_buf *buf, int acFlag);
 void rtlsdrClose();
 bool rtlsdrHandleOption(int argc, char **argv, int *jptr);
 

@@ -266,6 +266,14 @@ void ifileRun()
     pthread_mutex_unlock(&Modes.data_mutex);
 }
 
+void ifileDemod(struct mag_buf *buf, int acFlag)
+{
+    demodulate2400(buf);
+    if (acFlag) {
+        demodulate2400AC(buf);
+    }
+}
+
 void ifileClose()
 {
     if (ifile.converter) {

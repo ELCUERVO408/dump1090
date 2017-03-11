@@ -370,6 +370,14 @@ void rtlsdrRun()
     }
 }
 
+void rtlsdrDemod(struct mag_buf *buf, int acFlag)
+{
+    demodulate2400(buf);
+    if (acFlag) {
+        demodulate2400AC(buf);
+    }
+}
+
 void rtlsdrClose()
 {
     if (RTLSDR.dev) {

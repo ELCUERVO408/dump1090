@@ -134,12 +134,13 @@ void modesInit(void) {
     pthread_mutex_init(&Modes.data_mutex,NULL);
     pthread_cond_init(&Modes.data_cond,NULL);
 
-    Modes.sample_rate = 2400000.0;
+    //Modes.sample_rate = 2400000.0;
+    Modes.sample_rate = 12000000.0;
 
     // Allocate the various buffers used by Modes
     Modes.trailing_samples = (MODES_PREAMBLE_US + MODES_LONG_MSG_BITS + 16) * 1e-6 * Modes.sample_rate;
 
-    if ( ((Modes.log10lut   = (uint16_t *) malloc(sizeof(uint16_t) * 256 * 256)                                 ) == NULL) )
+    if ( (Modes.log10lut = (uint16_t *)malloc(sizeof(uint16_t) * 256 * 256)) == NULL )
     {
         fprintf(stderr, "Out of memory allocating data buffer.\n");
         exit(1);
@@ -721,9 +722,10 @@ int main(int argc, char **argv) {
                 // stuff at the same time.
                 pthread_mutex_unlock(&Modes.data_mutex);
 
-                demodulate2400(buf);
                 if (Modes.mode_ac) {
-                    demodulate2400AC(buf);
+                    sdrDemod(buf, 1);
+                } else {
+                    sdrDemod(buf, 0);
                 }
 
                 Modes.stats_current.samples_processed += buf->length;

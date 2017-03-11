@@ -1,6 +1,6 @@
 // Part of dump1090, a Mode S message decoder for RTLSDR devices.
 //
-// sdr_airspy.c: airspy dongle support
+// sdr_airspy.c: Airspy dongle support
 //
 // Copyright (c) 2014-2017 Oliver Jowett <oliver@mutability.co.uk>
 // Copyright (c) 2017 FlightAware LLC
@@ -52,11 +52,14 @@
 #include "sdr_airspy.h"
 
 #include <airspy.h>
-#include <soxr.h>
 #include <inttypes.h>
+
+#define NTHREADS 4
 
 static struct {
     struct airspy_device *dev;
+    airspy_model model;
+    double sample_rate;
     uint64_t serial_number;
     bool enable_lna_agc;
     bool enable_mixer_agc;
@@ -69,9 +72,9 @@ static struct {
     uint8_t mixer_gain;
     uint8_t lna_gain;
     uint8_t vga_gain;
-    soxr_t resampler;
-    char *airspy_bytes;
-    char *airspy_scratch;
+    uint16_t *samples;
+    unsigned num_samples;
+    uint16_t *magbuf;
     iq_convert_fn converter;
     struct converter_state *converter_state;
 } AIRSPY;
@@ -83,6 +86,8 @@ static struct {
 void airspyInitConfig()
 {
     AIRSPY.dev = NULL;
+    AIRSPY.model = BADMODEL;
+    AIRSPY.sample_rate = 0;
     AIRSPY.serial_number = 0;
     AIRSPY.enable_lna_agc = false;
     AIRSPY.enable_mixer_agc = false;
@@ -95,7 +100,9 @@ void airspyInitConfig()
     AIRSPY.mixer_gain = 8;
     AIRSPY.lna_gain = 13;
     AIRSPY.vga_gain = 5;
-    AIRSPY.resampler = NULL; 
+    AIRSPY.samples = NULL;
+    AIRSPY.num_samples = 0;
+    AIRSPY.magbuf = NULL;
     AIRSPY.converter = NULL;
     AIRSPY.converter_state = NULL;
 }
@@ -153,6 +160,7 @@ void airspyShowHelp()
 {
     printf("      airspy-specific options (use with --device-type airspy)\n");
     printf("\n");
+    printf("--model [mini | r2]      Specify Airspy model to use (required)\n");
     printf("--serial-number <0x...>  Serial number (in hex) of Airspy to open (optional)\n");
     printf("--enable-lna-agc         Enable LNA AGC (default off)\n");
     printf("--enable-mixer-agc       Enable MIXER AGC (default off)\n");
@@ -174,6 +182,17 @@ bool airspyHandleOption(int argc, char **argv, int *jptr)
 
     if (!strcmp(argv[j], "--serial-number") && more) {
         result = parse_uintt(argv[++j], &AIRSPY.serial_number, 64);
+    } else if (!strcmp(argv[j], "--model") && more) {
+        ++j;
+        if (!strcasecmp(argv[j], "mini")) {
+            AIRSPY.model = MINI;
+        } else if (!strcasecmp(argv[j], "r2")) {
+            AIRSPY.model = R2;
+        } else {
+            fprintf(stderr, "Invalid Airspy model '%s' (supported values: mini, r2)\n",
+                    argv[j]);
+            return false;
+        }
     } else if (!strcmp(argv[j], "--enable-lna-agc")) {
         AIRSPY.enable_lna_agc = true;
     } else if (!strcmp(argv[j], "--enable-mixer-agc")) {
@@ -226,28 +245,28 @@ bool airspyOpen(void) {
         } \
 
     int status;
-    uint32_t count;
-    uint32_t *samplerates;
-    soxr_error_t sox_err = NULL;
-    soxr_io_spec_t ios = soxr_io_spec(SOXR_INT16_I, SOXR_INT16_I);
-    soxr_quality_spec_t qts = soxr_quality_spec(SOXR_MQ, 0);
-    soxr_runtime_spec_t rts = soxr_runtime_spec(2);
+    uint32_t count, *samplerates;
+    static const char *aspymod[] = { "MINI", "R2" };
 
-    AIRSPY.airspy_scratch = calloc(2 * MODES_RTL_BUF_SIZE, sizeof(int16_t));
-    AIRSPY.airspy_bytes = malloc(2 * MODES_RTL_BUF_SIZE);
-    if ((AIRSPY.airspy_bytes == NULL) || (AIRSPY.airspy_scratch == NULL)) {
-        fprintf(stderr, "airspy buffer allocation failed\n");
+    if (AIRSPY.model == BADMODEL) {
+        fprintf(stderr, "Airspy error: You must specify an Airspy model with --model\n");
         return false;
+    }
+
+    if (Modes.mode_ac) {
+        fprintf(stderr,
+            "\nWarning: --modeac ignored (Airspy support not currently implemented);\n"
+            "         no ModeA/C messages will be decoded.\n\n");
     }
 
     if (AIRSPY.serial_number) {
         status = airspy_open_sn(&AIRSPY.dev, AIRSPY.serial_number);
         AIRSPY_STATUS(status, "airspy_open_sn failed");
-        fprintf(stderr, "Airspy with serial number 0x%" PRIX64 " found, ", AIRSPY.serial_number);
+        fprintf(stderr, "Airspy %s with serial number 0x%" PRIX64 " found, ", aspymod[AIRSPY.model], AIRSPY.serial_number);
     } else {
         status = airspy_open(&AIRSPY.dev);
         AIRSPY_STATUS(status, "No Airspy compatible devices found");
-        fprintf(stderr, "Airspy found, ");
+        fprintf(stderr, "Airspy %s found, ", aspymod[AIRSPY.model]);
     }
 
     fprintf(stderr, "configuring...\n");
@@ -257,17 +276,14 @@ bool airspyOpen(void) {
     samplerates = (uint32_t *)malloc(count * sizeof(uint32_t));
     airspy_get_samplerates(AIRSPY.dev, samplerates, count);
     // Set the samplerate to the highest value available
+    // mini = 6 Msps, r2 = 10 Msps
     status = airspy_set_samplerate(AIRSPY.dev, samplerates[0]);
     AIRSPY_STATUS(status, "airspy_set_samplerate failed");
-    // Downsample from the airspy sample rate to the demod sample rate
-    AIRSPY.resampler = soxr_create(samplerates[0], Modes.sample_rate, 2, &sox_err, &ios, &qts, &rts);
-    if (sox_err) {
-        fprintf(stderr, "soxr_create error: %s; %s\n", soxr_strerror(sox_err), strerror(errno));
-        return false;
-    }
+    AIRSPY.sample_rate = samplerates[0];
     free(samplerates);
 
-    status = airspy_set_sample_type(AIRSPY.dev, AIRSPY_SAMPLE_INT16_IQ);
+    // We'll do our own real->mag conversion vs. doing it in libairspy
+    status = airspy_set_sample_type(AIRSPY.dev, AIRSPY_SAMPLE_INT16_REAL);
     AIRSPY_STATUS(status, "airspy_set_sample_type failed");
 
     status = airspy_set_freq(AIRSPY.dev, Modes.freq);
@@ -334,7 +350,7 @@ bool airspyOpen(void) {
     }
 
     AIRSPY.converter = init_converter(INPUT_UC8,
-                                      Modes.sample_rate,
+                                      AIRSPY.sample_rate,
                                       Modes.dc_filter,
                                       &AIRSPY.converter_state);
 
@@ -344,30 +360,76 @@ bool airspyOpen(void) {
         return false;
     }
 
-    fprintf(stderr, "Airspy successfully initialized\n");
+    fprintf(stderr, "Airspy successfully initialized\n\n");
 
     return true;
+}
+
+void *real_converter(void *tid) {
+    int16_t queue[QUEUESIZE];
+    int queueidx = HILBERT_SIZE - 1;
+    unsigned i, start, mytid, end;
+
+    // Configure this threads sample block to process
+    mytid = * (unsigned *)tid;
+    start = mytid * (AIRSPY.num_samples / NTHREADS);
+    end = start + (AIRSPY.num_samples / NTHREADS);
+    if ((mytid == NTHREADS - 1) && (end != AIRSPY.num_samples))
+        end = AIRSPY.num_samples;
+
+    uint16_t *in = AIRSPY.samples + start;
+    uint16_t *out = AIRSPY.magbuf + start;
+
+    for (i = start; i < end; ++i) {
+        int j;
+        float I, Q;
+
+        queue[queueidx] = (int16_t)le16toh(*in++);
+
+        // nb: this gets the signs of I/Q wrong sometimes,
+        // but it doesn't matter because we're just going
+        // to square them anyway
+
+        I = queue[queueidx - HILBERT_SIZE/2] * 0.5;
+
+        Q = 0;
+        for (j = 0; j < HILBERT_SIZE; j += 2) {
+            Q += queue[queueidx - HILBERT_SIZE + j + 1] * hilbert[j];
+        }
+
+        ++queueidx;
+        if (queueidx >= QUEUESIZE) {
+            memcpy(&queue[0], &queue[queueidx - HILBERT_SIZE], HILBERT_SIZE * sizeof(queue[0]));
+            queueidx = HILBERT_SIZE;
+        }
+
+        float mag = sqrtf(I*I + Q*Q) * (65536.0 / 32768.0);
+        if (mag > 65535)
+            mag = 65535;
+
+        *out++ = (uint16_t)mag;
+    }
+
+    pthread_exit(NULL); 
 }
 
 static struct timespec airspy_thread_cpu;
 
 int airspyCallback(airspy_transfer *transfer) {
-    int16_t *inptr = (int16_t *)transfer->samples;
-    int16_t *outptr = (int16_t *)AIRSPY.airspy_scratch;
-    size_t i_len = transfer->sample_count;
-    size_t i, i_done, o_done;
+    size_t slen = transfer->sample_count;
     struct mag_buf *outbuf;
     struct mag_buf *lastbuf;
-    uint32_t slen;
     unsigned next_free_buffer;
     unsigned free_bufs;
     unsigned block_duration;
+    int i, tids[NTHREADS];
+    pthread_t threads[NTHREADS];
     static int dropping = 0;
     static uint64_t sampleCounter = 0;
+    //uint64_t dropped_samps = transfer->dropped_samples;
 
     if (Modes.exit) {
-        airspy_stop_rx(AIRSPY.dev);
-        return 0;
+        return -1;
     }
 
     // Lock the data buffer variables before accessing them
@@ -377,15 +439,12 @@ int airspyCallback(airspy_transfer *transfer) {
     outbuf = &Modes.mag_buffers[Modes.first_free_buffer];
     lastbuf = &Modes.mag_buffers[(Modes.first_free_buffer + MODES_MAG_BUFFERS - 1) % MODES_MAG_BUFFERS];
     free_bufs = (Modes.first_filled_buffer - next_free_buffer + MODES_MAG_BUFFERS) % MODES_MAG_BUFFERS;
+    AIRSPY.samples = (uint16_t *)transfer->samples;
+    AIRSPY.num_samples = transfer->sample_count;
 
     pthread_mutex_unlock(&Modes.data_mutex);
 
-    // Give the demodulater what it expects
-    soxr_process(AIRSPY.resampler, inptr, i_len, &i_done, outptr, MODES_RTL_BUF_SIZE, &o_done);
-    for (i = 0; i < o_done; i++)
-        AIRSPY.airspy_bytes[i] = (int8_t)(outptr[i] >> 4) + 127;
-
-    slen = o_done;
+    //fprintf(stderr, "dropped samples: %" PRIu64 ", number of samples this callback: %zu\n", dropped_samps, slen);
 
     if (free_bufs == 0 || (dropping && free_bufs < MODES_MAG_BUFFERS/2)) {
         // FIFO is full. Drop this block.
@@ -398,9 +457,9 @@ int airspyCallback(airspy_transfer *transfer) {
     dropping = 0;
 
     // Compute the sample timestamp and system timestamp for the start of the block
-    outbuf->sampleTimestamp = sampleCounter + 12e6 / Modes.sample_rate;
+    outbuf->sampleTimestamp = sampleCounter + 12e6 / AIRSPY.sample_rate;
     sampleCounter += slen;
-    block_duration = 1e9 * slen / Modes.sample_rate;
+    block_duration = 1e9 * slen / AIRSPY.sample_rate;
 
     // Get the approx system time for the start of this block
     clock_gettime(CLOCK_REALTIME, &outbuf->sysTimestamp);
@@ -416,7 +475,20 @@ int airspyCallback(airspy_transfer *transfer) {
 
     // Convert the new data
     outbuf->length = slen;
-    AIRSPY.converter(AIRSPY.airspy_bytes, &outbuf->data[Modes.trailing_samples], slen, AIRSPY.converter_state, &outbuf->mean_level, &outbuf->mean_power); 
+
+    AIRSPY.magbuf = &outbuf->data[Modes.trailing_samples];
+
+    for (i = 0; i < NTHREADS; i++)
+    {
+        tids[i] = i;
+        if ( pthread_create(&threads[i], NULL, real_converter, (void *)&tids[i]) ) {
+            fprintf(stderr, "Cannot create converter threads");
+            return (-1);
+        }
+    }
+
+    for (i = 0; i < NTHREADS; i++)
+        pthread_join(threads[i], NULL);
 
     // Push the new data to the demodulation thread
     pthread_mutex_lock(&Modes.data_mutex);
@@ -443,13 +515,21 @@ void airspyRun()
 
     start_cpu_timing(&airspy_thread_cpu);
 
-    while (!Modes.exit) {
-        airspy_start_rx(AIRSPY.dev, airspyCallback, NULL);
+    airspy_start_rx(AIRSPY.dev, airspyCallback, NULL);
 
-        while ((airspy_is_streaming(AIRSPY.dev) == AIRSPY_TRUE) && (!Modes.exit)) {
-            usleep(1000);
-        }
+    while ((airspy_is_streaming(AIRSPY.dev) == AIRSPY_TRUE) && (!Modes.exit)) {
+        usleep(5000);
     }
+}
+
+void airspyDemod(struct mag_buf *buf, int acFlag)
+{
+    MODES_NOTUSED(acFlag);
+
+    if (AIRSPY.model == MINI)
+       demodulate12m(buf);
+    else
+       demodulate20m(buf);
 }
 
 void airspyClose()
@@ -466,7 +546,4 @@ void airspyClose()
         AIRSPY.converter = NULL;
         AIRSPY.converter_state = NULL;
     }
-
-    if (AIRSPY.resampler)
-        soxr_delete(AIRSPY.resampler);
 }

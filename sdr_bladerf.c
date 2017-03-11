@@ -500,6 +500,14 @@ void bladeRFRun()
     }
 }
 
+void bladeRFDemod(struct mag_buf *buf, int acFlag)
+{
+    demodulate2400(buf);
+    if (acFlag) {
+        demodulate2400AC(buf);
+    }
+}
+
 void bladeRFClose()
 {
     if (BladeRF.converter) {

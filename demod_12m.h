@@ -1,9 +1,8 @@
 // Part of dump1090, a Mode S message decoder for RTLSDR devices.
 //
-// sdr_ifile.c: "file" SDR support (header)
+// demod_12m.h: 12MHz Mode S demodulator prototypes.
 //
-// Copyright (c) 2016-2017 Oliver Jowett <oliver@mutability.co.uk>
-// Copyright (c) 2017 FlightAware LLC
+// Copyright (c) 2014,2015 Oliver Jowett <oliver@mutability.co.uk>
 //
 // This file is free software: you may copy, redistribute and/or modify it  
 // under the terms of the GNU General Public License as published by the
@@ -18,19 +17,13 @@
 // You should have received a copy of the GNU General Public License  
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef SDR_IFILE_H
-#define SDR_IFILE_H
+#ifndef DUMP1090_DEMOD_12M_H
+#define DUMP1090_DEMOD_12M_H
 
-#include "demod_2400.h"
+#include <stdint.h>
 
-// Pseudo-SDR that reads from a sample file
+struct mag_buf;
 
-void ifileInitConfig();
-void ifileShowHelp();
-bool ifileHandleOption(int argc, char **argv, int *jptr);
-bool ifileOpen();
-void ifileRun();
-void ifileDemod(struct mag_buf *buf, int acFlag);
-void ifileClose();
+void demodulate12m(struct mag_buf *mag);
 
 #endif

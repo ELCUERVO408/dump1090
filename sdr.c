@@ -39,6 +39,7 @@ typedef struct {
     bool (*handleOption)(int, char**, int*);
     bool (*open)();
     void (*run)();
+    void (*demod)(struct mag_buf*, int);
     void (*close)();
 } sdr_handler;
 
@@ -69,6 +70,12 @@ static void noRun()
 {
 }
 
+static void noDemod(struct mag_buf *buf, int acFlag)
+{
+    MODES_NOTUSED(buf);
+    MODES_NOTUSED(acFlag);
+}
+
 static void noClose()
 {
 }
@@ -81,21 +88,21 @@ static bool unsupportedOpen()
 
 static sdr_handler sdr_handlers[] = {
 #ifdef ENABLE_RTLSDR
-    { "rtlsdr", SDR_RTLSDR, rtlsdrInitConfig, rtlsdrShowHelp, rtlsdrHandleOption, rtlsdrOpen, rtlsdrRun, rtlsdrClose },
+    { "rtlsdr", SDR_RTLSDR, rtlsdrInitConfig, rtlsdrShowHelp, rtlsdrHandleOption, rtlsdrOpen, rtlsdrRun, rtlsdrDemod, rtlsdrClose },
 #endif
 
 #ifdef ENABLE_BLADERF
-    { "bladerf", SDR_BLADERF, bladeRFInitConfig, bladeRFShowHelp, bladeRFHandleOption, bladeRFOpen, bladeRFRun, bladeRFClose },
+    { "bladerf", SDR_BLADERF, bladeRFInitConfig, bladeRFShowHelp, bladeRFHandleOption, bladeRFOpen, bladeRFRun, bladeRFDemod, bladeRFClose },
 #endif
 
 #ifdef ENABLE_AIRSPY
-    { "airspy", SDR_AIRSPY, airspyInitConfig, airspyShowHelp, airspyHandleOption, airspyOpen, airspyRun, airspyClose },
+    { "airspy", SDR_AIRSPY, airspyInitConfig, airspyShowHelp, airspyHandleOption, airspyOpen, airspyRun, airspyDemod, airspyClose },
 #endif
 
-    { "ifile", SDR_IFILE, ifileInitConfig, ifileShowHelp, ifileHandleOption, ifileOpen, ifileRun, ifileClose },
-    { "none", SDR_NONE, noInitConfig, noShowHelp, noHandleOption, noOpen, noRun, noClose },
+    { "ifile", SDR_IFILE, ifileInitConfig, ifileShowHelp, ifileHandleOption, ifileOpen, ifileRun, ifileDemod, ifileClose },
+    { "none", SDR_NONE, noInitConfig, noShowHelp, noHandleOption, noOpen, noRun, noDemod, noClose },
 
-    { NULL, SDR_NONE, NULL, NULL, NULL, NULL, NULL, NULL } /* must come last */
+    { NULL, SDR_NONE, NULL, NULL, NULL, NULL, NULL, NULL, NULL } /* must come last */
 };
 
 void sdrInitConfig()
@@ -149,7 +156,7 @@ bool sdrHandleOption(int argc, char **argv, int *jptr)
 
 static sdr_handler *current_handler()
 {
-    static sdr_handler unsupported_handler = { "unsupported", SDR_NONE, noInitConfig, noShowHelp, noHandleOption, unsupportedOpen, noRun, noClose };
+    static sdr_handler unsupported_handler = { "unsupported", SDR_NONE, noInitConfig, noShowHelp, noHandleOption, unsupportedOpen, noRun, noDemod, noClose };
 
     for (int i = 0; sdr_handlers[i].name; ++i) {
         if (Modes.sdr_type == sdr_handlers[i].sdr_type) {
@@ -168,6 +175,11 @@ bool sdrOpen()
 void sdrRun()
 {
     return current_handler()->run();
+}
+
+void sdrDemod(struct mag_buf *buf, int acFlag)
+{
+    return current_handler()->demod(buf, acFlag);
 }
 
 void sdrClose()

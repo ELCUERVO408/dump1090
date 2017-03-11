@@ -43,12 +43,6 @@ $ sudo make install
 $ sudo ldconfig
 ````
 
-You will also need the sox resampler library:
-
-````
-$ sudo apt-get install libsoxr-dev
-````
-
 If you've already installed the rtlsdr dependencies as detailed above, you should be all set. If not, you will also need the usb-1.0 development package if not already installed:
 
 ````

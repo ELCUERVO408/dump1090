@@ -20,6 +20,8 @@
 #ifndef BLADERF_H
 #define BLADERF_H
 
+#include "demod_2400.h"
+
 // Support for the Nuand bladeRF SDR
 
 void bladeRFInitConfig();
@@ -27,6 +29,7 @@ void bladeRFShowHelp();
 bool bladeRFHandleOption(int argc, char **argv, int *jptr);
 bool bladeRFOpen();
 void bladeRFRun();
+void bladeRFDemod(struct mag_buf *buf, int acFlag);
 void bladeRFClose();
 
 #endif

@@ -23,11 +23,14 @@
 
 // Common interface to different SDR inputs.
 
+struct mag_buf;
+
 void sdrInitConfig();
 void sdrShowHelp();
 bool sdrHandleOption(int argc, char **argv, int *jptr);
 bool sdrOpen();
 void sdrRun();
+void sdrDemod(struct mag_buf *buf, int acFlag);
 void sdrClose();
 
 #endif

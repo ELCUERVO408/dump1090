@@ -12,11 +12,11 @@ ifneq ($(HTMLPATH),"")
 endif
 
 DIALECT = -std=c11
-CFLAGS += $(DIALECT) -O2 -g -Wall -Werror -W -D_DEFAULT_SOURCE
+CFLAGS += $(DIALECT) -O2 -g -march=armv8-a+crc -mtune=cortex-a53 -mfpu=crypto-neon-fp-armv8 -mfloat-abi=hard -ftree-vectorize -ftree-vectorizer-verbose=7 -fopt-info-vec -funsafe-math-optimizations -pipe -Wall -Werror -W -D_DEFAULT_SOURCE
 LIBS = -lpthread -lm -lrt
 
 ifeq ($(RTLSDR), yes)
-  SDR_OBJ += sdr_rtlsdr.o
+  SDR_OBJ += demod_2400.o sdr_rtlsdr.o
   CPPFLAGS += -DENABLE_RTLSDR
 
   ifdef RTLSDR_PREFIX
@@ -35,21 +35,23 @@ ifeq ($(RTLSDR), yes)
 endif
 
 ifeq ($(BLADERF), yes)
-  SDR_OBJ += sdr_bladerf.o
+  SDR_OBJ += demod_2400.o sdr_bladerf.o
   CPPFLAGS += -DENABLE_BLADERF
   CFLAGS += $(shell pkg-config --cflags libbladeRF)
   LIBS_SDR += $(shell pkg-config --libs libbladeRF)
 endif
 
 ifeq ($(AIRSPY), yes)
-  SDR_OBJ += sdr_airspy.o
+  SDR_OBJ += demod_12m.o demod_20m.o sdr_airspy.o
   CPPFLAGS += -DENABLE_AIRSPY
+
   ifeq ($(RTLSDR), no)
     CFLAGS += $(shell pkg-config --cflags libusb-1.0)
     LIBS_SDR += $(shell pkg-config --libs libusb-1.0)
   endif
-  CFLAGS += $(shell pkg-config --cflags libairspy soxr)
-  LIBS_SDR += $(shell pkg-config --libs libairspy soxr)
+
+  CFLAGS += $(shell pkg-config --cflags libairspy)
+  LIBS_SDR += $(shell pkg-config --libs libairspy)
 endif
 
 all: dump1090 view1090
@@ -57,7 +59,7 @@ all: dump1090 view1090
 %.o: %.c *.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-dump1090: dump1090.o anet.o interactive.o mode_ac.o mode_s.o net_io.o crc.o demod_2400.o stats.o cpr.o icao_filter.o track.o util.o convert.o sdr_ifile.o sdr.o $(SDR_OBJ) $(COMPAT)
+dump1090: dump1090.o anet.o interactive.o mode_ac.o mode_s.o net_io.o crc.o stats.o cpr.o icao_filter.o track.o util.o convert.o sdr_ifile.o sdr.o $(SDR_OBJ) $(COMPAT)
 	$(CC) -g -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBS_SDR) -lncurses
 
 view1090: view1090.o anet.o interactive.o mode_ac.o mode_s.o net_io.o crc.o stats.o cpr.o icao_filter.o track.o util.o $(COMPAT)
